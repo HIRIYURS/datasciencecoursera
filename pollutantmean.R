@@ -34,29 +34,38 @@ pollutantmean <- function(directory, pollutant, id = 1:332) {
                 for (i in id) {
                         ## Form the filename
                         filename <- sprintf("%03d.csv", i)
-                        
-                        ## Start collating the file contents into
-                        ## a data frame
-                        if (!exists("airqlty")) {
-                                ## Start reading the file contents
-                                airqlty <- read.csv(filename)
+                        if (file.exists(filename)) {
+                                ## Start collating the file contents into
+                                ## a data frame
+                                if (!exists("airqlty")) {
+                                        ## Start reading the file contents
+                                        airqlty <- read.csv(filename)
+                                } else {
+                                        ## Append the file contents to our data frame
+                                        tempdata <- read.csv(filename)
+                                        airqlty <- rbind(airqlty, tempdata)
+                                        rm(tempdata)
+                                }
                         } else {
-                                ## Append the file contents to our data frame
-                                tempdata <- read.csv(filename)
-                                airqlty <- rbind(airqlty, tempdata)
-                                rm(tempdata)
+                                print(sprintf ("%s: file does not exist!", filename))
                         }
                         
                 }
-                
-                ## get the mean now
-                meanval <- mean(airqlty[[pollutant]], na.rm=TRUE)
-                
+
                 ## Setback the currwd
                 setwd(currwd)
                 
-                ## return the meanval
-                round(meanval, digits=3)
+                if (exists("airqlty")) {
+                        ## get the mean now
+                        meanval <- mean(airqlty[[pollutant]], na.rm=TRUE)
+
+                        ## return the meanval
+                        round(meanval, digits=3)
+                        
+                } else {
+                        NA
+                }
+                
         } else {
                 ## Return NA
                 print("Invalid arguments passed")
