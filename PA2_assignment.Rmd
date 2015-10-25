@@ -1,0 +1,170 @@
+---
+title: "Events with the most impact on Public Health and Economy in the USA 1950 - 2011 (Based on data from NOAA)"
+author: "Santhosh Shankar"
+date: "October 25, 2015"
+output: html_document
+---
+
+# Synopsis
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This report analyses [NOAA storm database][1] and address the following questions:
+
+**1. Across the United States, which types of events are most harmful with respect to population health?**
+
+This analysis shows that more than 95,000 people have been injured (90K) or killed (> 5K) by the most harmful events such as TORNADOES. The second highest toll is due to EXCESSIVE HEAT (> 8k). The top 10 calamity event types on public health have been listed in this report.
+
+**2. Across the United States, which types of events have the greatest economic consequences?**
+
+This analysis also shows the events with the most economic consequences are the FLOODS with over 150 billions of USD in damages (property and Corp) followed by the HURRICANES, TYPHOONS with nearly 72 billions of USD and TORNADOES not lagging too much behind in damages. The top 10 calamity event types on economy have been listed in this report.
+
+# Data Processing
+#### Load the required libraries
+
+```{r LoadingLibraries}
+require(plyr)
+require(knitr)
+require(ggplot2)
+require(grid)
+```
+
+#### Download the [NOAA storm database][1] file (.csv format) and read the data.
+```{r GettingData}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+
+#filename <- "repdata-data-StormData.csv.bz2"
+filename <- "repdata-data-StormData.csv"
+
+# Download the file
+if (!file.exists(filename)) {    
+    download.file(fileUrl, destfile = filename, method = "auto")
+    #bunzip2("repdata-data-StormData.csv.bz2", destname = filename)
+}
+
+stdata <- read.csv(filename, stringsAsFactors = FALSE,
+                 strip.white = TRUE, header = TRUE)
+```
+
+#### Cleaning data and processing data format as required for our analysis.
+**Following processing/formating has been done for this purpose**
+
+1. Uncompress the zip file in the working directory
+2. Keep only relevant columns (event type and damages)
+3. Format the date column
+4. Clean and recode the two columns containing multipliers to calculate total amounts in dollar. The variable, PROPDMGEXP and CROPDMGEXP have the factor of multiplicity of the variables PROPDMG and CROPDMG as shown below,  
+    + H/h - Hundred (10^2)
+    + K/k - Thousands (10^3)
+    + M/m - Millions (10^6)
+    + B/b - Billions (10^9) and so on
+    + n - 10^n (wheren is numeric value)
+    + -/+/?/ / - 1
+6. Create new column for total damage (sum of property and Corp) in terms of USD
+5. Summarize data: calculate sum of damages by event type (use ddply)
+6. Order the data
+
+```{r Data-Processing}
+stdata <- stdata[ , c("EVTYPE", "BGN_DATE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+
+# Format the date
+stdata$BGN_DATE <- as.POSIXct(stdata$BGN_DATE,format="%m/%d/%Y %H:%M:%S")
+
+PRPDMG_multiplier <- mapvalues(stdata$PROPDMGEXP,
+                        c("K", "M", "", "B", "m", "+", "0", "5", "6", "?", "4",
+                            "2", "3", "h", "7", "H", "-", "1", "8"), 
+                        c(1e3, 1e6, 1, 1e9, 1e6,  1,  1, 1e5, 1e6,  1, 1e4,
+                          1e2, 1e3, 1, 1e7, 1e2,  1, 10, 1e8))
+
+CRPDMG_multiplier <- mapvalues(stdata$CROPDMGEXP,
+                        c("", "M", "K", "m", "B", "?", "0", "k", "2"),
+                        c( 1, 1e6, 1e3, 1e6, 1e9, 1, 1, 1e3, 1e2))
+
+stdata$PROPDMGDOLLAR <- as.numeric(PRPDMG_multiplier) * stdata$PROPDMG
+stdata$CROPDMGDOLLAR <- as.numeric(CRPDMG_multiplier) * stdata$CROPDMG 
+
+remove(PRPDMG_multiplier)
+remove(CRPDMG_multiplier)
+
+# Add new column for Total Damage - sum of property and Corp
+stdata$TOTALDMGDOLLAR <- stdata$PROPDMGDOLLAR + stdata$CROPDMGDOLLAR
+
+# Making the summary 9based on Event type) of the data using ddply
+stdata <- ddply(stdata, .(EVTYPE), summarize, 
+                    propdamage = sum(TOTALDMGDOLLAR), 
+                    injuries= sum(INJURIES), 
+                    fatalities = sum(FATALITIES),
+                    persdamage = sum(INJURIES) + sum(FATALITIES))
+
+```
+
+# Results
+#### 1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+By looking at the graphs below, The TORNADOES are the most harmful event to population/public health with more than 95,000 people either injured (>90k) or fatalities (>5K).
+
+```{r Results_PublicHealth}
+
+stdata <- stdata[order(stdata$persdamage, decreasing = TRUE),]
+
+# Plot the graph for total damage (injuries + fatalities)
+ph_plot <- qplot(x = EVTYPE, y = persdamage, fill = persdamage,
+                data = head(stdata, 10), geom = "bar", stat = "identity",
+                            position="dodge") + 
+                labs(x = "Event Type",
+                     y = "Injuries/Fatalities 1950-2011, USA") +
+                scale_fill_gradient("Personal Damage", low = "orange",
+                                    high = "darkred") +
+                theme(axis.text.x = element_text(angle=90, hjust=1))
+
+print(ph_plot)
+
+stdata <- stdata[order(stdata$injuries, decreasing = TRUE),]
+
+# Plot the injury graph
+inj_plot <- qplot(x = EVTYPE, y = injuries, fill = injuries,
+                data = head(stdata, 10), geom = "bar", stat = "identity",
+                            position="dodge") +
+                labs(x = "Event Type", y = "Injuries 1950-2011, USA") +
+                scale_fill_gradient("Injuries", low = "orange", 
+                                    high = "darkred") +
+                theme(axis.text.x = element_text(angle=90, hjust=1))
+
+stdata <- stdata[order(stdata$fatalities, decreasing = TRUE),]
+
+fatl_plot <- qplot(x = EVTYPE, y = fatalities, fill = fatalities,
+                data = head(stdata,10), geom = "bar", stat = "identity",
+                            position="dodge") + 
+                labs(x = "Event Type", y = "Fatalities 1950-2011, USA") +
+                scale_fill_gradient("Fatalities", low = "orange", 
+                                    high = "darkred") +
+                theme(axis.text.x = element_text(angle=90, hjust=1))
+
+# Plot both for injuries and fatalities
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 2)))
+print(inj_plot, vp = viewport(layout.pos.row = 1,
+                                  layout.pos.col = 1))
+print(fatl_plot, vp = viewport(layout.pos.row = 1,
+                                  layout.pos.col = 2))
+```
+
+
+#### 2. Across the United States, which types of events have the greatest economic consequences?
+This analysis also shows the events with the most economic consequences are the FLOODS with over 150 billions of USD in damages (property and Corp) followed by the HURRICANES, TYPHOONS with nearly 72 billions of USD and TORNADOES not lagging too much behind in damages.
+```{r Results_PropertyDMG}
+# Order the data
+stdata <- stdata[order(stdata$propdamage, decreasing = TRUE),]
+
+# Plot the property Damage graph
+prop_plot <- qplot(x = EVTYPE, y = propdamage, fill = propdamage,
+                    data = head(stdata, 10), geom = "bar", stat = "identity",
+                                position="dodge") + 
+                    labs(x = "Event Type", 
+                         y = "Property Damage (USD) 1950-2011, USA") +
+                    scale_fill_gradient("$USD", low = "orange",
+                                        high = "darkred") +
+                    theme(axis.text.x = element_text(angle=90, hjust=1))
+
+print(prop_plot) 
+```
+
+
+[1]: https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2 "NOAA storm database"
